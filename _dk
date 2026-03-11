@@ -14,6 +14,10 @@ _dk_projects() {
       projects+=("$key")
     done < "$_dk_config_file"
   fi
+  if (( ${#projects} == 0 )); then
+    _message 'no projects registered — use "dk add <path>" first'
+    return
+  fi
   _describe 'project' projects
 }
 
@@ -99,6 +103,17 @@ _dk_envs() {
     fi
   done < "$_dk_config_file"
   _describe 'environment' envs
+}
+
+# Usage hints for 'dk add'
+_dk_add_hints() {
+  local -a hints
+  hints=(
+    'name:dk add <name> <path> — register with explicit name'
+    'path:dk add <path> — auto-derive name from directory'
+    'current-dir:dk add <name> — use current directory'
+  )
+  _describe 'examples' hints
 }
 
 _dk() {
@@ -211,6 +226,17 @@ _dk() {
       case $CURRENT in
         3) _dk_projects ;;
         4) _dk_services "${words[3]}" ;;
+        5)
+          local -a exec_hints
+          exec_hints=(
+            'yarn:e.g. yarn migrate, yarn test'
+            'npm:e.g. npm run build, npm test'
+            'node:e.g. node --version'
+            'python:e.g. python manage.py migrate'
+            'sh:e.g. sh -c "echo hello"'
+          )
+          _describe 'command' exec_hints
+          ;;
         *) _normal ;;
       esac
       ;;
@@ -236,7 +262,12 @@ _dk() {
       ;;
     add)
       case $CURRENT in
-        3) _files -/ ;;
+        3)
+          # Show both directory completion and usage hint
+          _alternative \
+            'directories:project path:_files -/' \
+            'hints:usage hint:_dk_add_hints'
+          ;;
         4) _files -/ ;;
       esac
       ;;
@@ -267,7 +298,14 @@ _dk() {
               _dk_envs "${words[3]}"
               ;;
             add)
-              _message 'environment name'
+              local -a env_name_hints
+              env_name_hints=(
+                'dev:Development environment'
+                'staging:Staging environment'
+                'prod:Production environment'
+                'test:Testing environment'
+              )
+              _describe 'environment name' env_name_hints
               ;;
             update)
               _dk_envs "${words[3]}"
