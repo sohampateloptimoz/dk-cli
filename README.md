@@ -1,8 +1,8 @@
-# Docker Project CLI (`dk`) - Complete User Guide
+# Docker Kommander (`dk`) - Complete User Guide
 
 > Version 2.0.0
 
-A safe, opinionated CLI wrapper around `docker compose` for managing multiple local projects with multi-environment support from anywhere in your terminal.
+**Docker Kommander** — a safe, opinionated CLI wrapper around `docker compose` for managing multiple local projects with multi-environment support from anywhere in your terminal.
 
 ---
 
