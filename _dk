@@ -21,34 +21,29 @@ _dk_projects() {
   _describe 'project' projects
 }
 
-# Get services from a project's compose file
+# Get services from a project's compose file (single-pass config read)
 _dk_services() {
   local project=$1
   local -a services
-  local project_dir="" compose_file="" default_env=""
+  local project_dir="" compose_file="" default_env="" first_env_file=""
 
   [[ -f "$_dk_config_file" ]] || return
 
-  # Read project dir
+  # Single pass: extract project dir, default env, and first env file
   while IFS='=' read -r key value; do
-    [[ -z "$key" || "$key" == \#* || "$key" == *.* ]] && continue
+    [[ -z "$key" || "$key" == \#* ]] && continue
     if [[ "$key" == "$project" ]]; then
       project_dir="${value/#\~/$HOME}"
-      break
+    elif [[ "$key" == "${project}.env.__default__" ]]; then
+      default_env="$value"
+    elif [[ "$key" == "${project}.env."* && -z "$first_env_file" ]]; then
+      first_env_file="$value"
     fi
   done < "$_dk_config_file"
 
   [[ -z "$project_dir" ]] && return
 
-  # Find default env
-  while IFS='=' read -r key value; do
-    if [[ "$key" == "${project}.env.__default__" ]]; then
-      default_env="$value"
-      break
-    fi
-  done < "$_dk_config_file"
-
-  # Find compose file for default env (or first env)
+  # Resolve compose file: default env > first env > auto-detect
   if [[ -n "$default_env" ]]; then
     while IFS='=' read -r key value; do
       if [[ "$key" == "${project}.env.${default_env}" ]]; then
@@ -57,35 +52,30 @@ _dk_services() {
       fi
     done < "$_dk_config_file"
   fi
-
-  # Fallback: first env entry
-  if [[ -z "$compose_file" ]]; then
-    while IFS='=' read -r key value; do
-      if [[ "$key" == "${project}.env."* && "$key" != *"__default__" ]]; then
-        compose_file="$value"
-        break
-      fi
-    done < "$_dk_config_file"
-  fi
-
-  # Fallback: auto-detect compose file
+  [[ -z "$compose_file" ]] && compose_file="$first_env_file"
   if [[ -z "$compose_file" ]]; then
     for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do
-      if [[ -f "$project_dir/$f" ]]; then
-        compose_file="$f"
-        break
-      fi
+      [[ -f "$project_dir/$f" ]] && compose_file="$f" && break
     done
   fi
 
   [[ -z "$compose_file" ]] && return
-
-  # Resolve relative path
   [[ "$compose_file" != /* ]] && compose_file="$project_dir/$compose_file"
   [[ -f "$compose_file" ]] || return
 
-  # Extract service names from compose file
-  services=(${(f)"$(command grep -E '^\s{2}\S+:' "$compose_file" 2>/dev/null | sed 's/^[[:space:]]*//' | sed 's/:.*//')"})
+  # Extract top-level service names (2-space indented keys under services:)
+  local in_services=false
+  while IFS= read -r line; do
+    if [[ "$line" == "services:" ]]; then
+      in_services=true
+    elif $in_services; then
+      if [[ "$line" =~ ^'  '[a-zA-Z0-9_-]+: ]]; then
+        services+=("${${line##  }%%:*}")
+      elif [[ "$line" =~ ^[a-z] ]]; then
+        break  # Hit next top-level key, stop
+      fi
+    fi
+  done < "$compose_file"
   _describe 'service' services
 }
 
@@ -121,6 +111,7 @@ _dk() {
   commands=(
     'up:Start containers'
     'stop:Stop containers'
+    'start:Start previously stopped containers'
     'down:Stop and remove containers'
     'restart:Restart containers'
     'build:Rebuild images'
@@ -193,7 +184,7 @@ _dk() {
           ;;
       esac
       ;;
-    stop|restart|build|ps|pull)
+    stop|start|restart|build|ps|pull)
       case $CURRENT in
         3) _dk_projects ;;
         *)

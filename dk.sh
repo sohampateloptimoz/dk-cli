@@ -489,6 +489,9 @@ ${C_BOLD}COMMANDS${C_RESET}
   ${C_CYAN}stop${C_RESET} <project>
       Stop containers without removing them
 
+  ${C_CYAN}start${C_RESET} <project>
+      Start previously stopped containers (without recreating)
+
   ${C_CYAN}down${C_RESET} <project> [--purge]
       Stop and remove containers (preserves volumes)
       Use --purge to also remove volumes
@@ -680,6 +683,16 @@ cmd_stop() {
     cd "$dir"
     log "Stopping containers (not removing)"
     compose_cmd "$project" "$dir" stop
+  )
+}
+
+cmd_start() {
+  local project=$1
+  local dir=$2
+  (
+    cd "$dir"
+    log "Starting stopped containers"
+    compose_cmd "$project" "$dir" start
   )
 }
 
@@ -2043,6 +2056,9 @@ main() {
       ;;
     stop)
       cmd_stop "$project" "$dir"
+      ;;
+    start)
+      cmd_start "$project" "$dir"
       ;;
     restart)
       cmd_restart "$project" "$dir"
