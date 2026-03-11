@@ -72,7 +72,32 @@ export PATH="$HOME/.local/bin:$PATH"
 chmod +x /path/to/d.sh
 ```
 
-### 3. Verify it works
+### 3. Enable tab completion (optional)
+
+```bash
+# Symlink the completion file (stays in sync with the repo)
+mkdir -p ~/.zsh/completions
+ln -sf /path/to/dk-cli/_dk ~/.zsh/completions/_dk
+
+# Add to ~/.zshrc (before compinit):
+fpath=(~/.zsh/completions $fpath)
+autoload -Uz compinit && compinit
+```
+
+Restart your shell or run `exec zsh` to activate.
+
+**What it completes:**
+
+| Context | Completions |
+| ------- | ----------- |
+| `dk <TAB>` | All commands with descriptions |
+| `dk up <TAB>` | Registered project names |
+| `dk logs myapp <TAB>` | Services from the project's compose file |
+| `dk env myapp <TAB>` | Environment subcommands (`list`, `add`, `info`, etc.) |
+| `dk env myapp info <TAB>` | Configured environment names |
+| `dk up --<TAB>` | Context-aware flags (`--build`, `--env`, etc.) |
+
+### 4. Verify it works
 
 ```bash
 dk --version
@@ -80,6 +105,11 @@ dk --version
 
 dk help
 # Shows the full help page
+
+# Test tab completion
+dk <TAB>        # shows all commands
+dk up <TAB>     # shows registered projects
+dk logs backend <TAB>  # shows services from compose file
 ```
 
 ---

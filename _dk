@@ -1,0 +1,289 @@
+#compdef dk
+
+# Zsh completion for Docker Kommander (dk)
+# Place in your fpath or source directly
+
+_dk_config_file="${XDG_CONFIG_HOME:-$HOME/.config}/dk/projects.conf"
+
+# Get registered project names from config
+_dk_projects() {
+  local -a projects
+  if [[ -f "$_dk_config_file" ]]; then
+    while IFS='=' read -r key value; do
+      [[ -z "$key" || "$key" == \#* || "$key" == *.* ]] && continue
+      projects+=("$key")
+    done < "$_dk_config_file"
+  fi
+  _describe 'project' projects
+}
+
+# Get services from a project's compose file
+_dk_services() {
+  local project=$1
+  local -a services
+  local project_dir="" compose_file="" default_env=""
+
+  [[ -f "$_dk_config_file" ]] || return
+
+  # Read project dir
+  while IFS='=' read -r key value; do
+    [[ -z "$key" || "$key" == \#* || "$key" == *.* ]] && continue
+    if [[ "$key" == "$project" ]]; then
+      project_dir="${value/#\~/$HOME}"
+      break
+    fi
+  done < "$_dk_config_file"
+
+  [[ -z "$project_dir" ]] && return
+
+  # Find default env
+  while IFS='=' read -r key value; do
+    if [[ "$key" == "${project}.env.__default__" ]]; then
+      default_env="$value"
+      break
+    fi
+  done < "$_dk_config_file"
+
+  # Find compose file for default env (or first env)
+  if [[ -n "$default_env" ]]; then
+    while IFS='=' read -r key value; do
+      if [[ "$key" == "${project}.env.${default_env}" ]]; then
+        compose_file="$value"
+        break
+      fi
+    done < "$_dk_config_file"
+  fi
+
+  # Fallback: first env entry
+  if [[ -z "$compose_file" ]]; then
+    while IFS='=' read -r key value; do
+      if [[ "$key" == "${project}.env."* && "$key" != *"__default__" ]]; then
+        compose_file="$value"
+        break
+      fi
+    done < "$_dk_config_file"
+  fi
+
+  # Fallback: auto-detect compose file
+  if [[ -z "$compose_file" ]]; then
+    for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do
+      if [[ -f "$project_dir/$f" ]]; then
+        compose_file="$f"
+        break
+      fi
+    done
+  fi
+
+  [[ -z "$compose_file" ]] && return
+
+  # Resolve relative path
+  [[ "$compose_file" != /* ]] && compose_file="$project_dir/$compose_file"
+  [[ -f "$compose_file" ]] || return
+
+  # Extract service names from compose file
+  services=(${(f)"$(command grep -E '^\s{2}\S+:' "$compose_file" 2>/dev/null | sed 's/^[[:space:]]*//' | sed 's/:.*//')"})
+  _describe 'service' services
+}
+
+# Get environment names for a project
+_dk_envs() {
+  local project=$1
+  local -a envs
+
+  [[ -f "$_dk_config_file" ]] || return
+
+  while IFS='=' read -r key value; do
+    if [[ "$key" == "${project}.env."* && "$key" != *"__default__" ]]; then
+      local ename="${key#${project}.env.}"
+      envs+=("$ename")
+    fi
+  done < "$_dk_config_file"
+  _describe 'environment' envs
+}
+
+_dk() {
+  local -a commands
+  commands=(
+    'up:Start containers'
+    'stop:Stop containers'
+    'down:Stop and remove containers'
+    'restart:Restart containers'
+    'build:Rebuild images'
+    'logs:Stream logs'
+    'ps:Container status'
+    'exec:Run a command in a container'
+    'shell:Open a shell in a container'
+    'pull:Pull latest images'
+    'clean:Interactive cleanup'
+    'add:Register a project'
+    'remove:Unregister a project'
+    'env:Manage environments'
+    'status:All projects overview'
+    'list:List projects'
+    'init:Create config file'
+    'help:Show help'
+  )
+
+  # Use the raw words array to determine position
+  # words[1]=dk, words[2]=command, words[3]=arg1, words[4]=arg2, ...
+  local nwords=${#words[@]}
+  local cmd="${words[2]}"
+
+  # Completing the command itself (position 2)
+  if (( CURRENT == 2 )); then
+    _describe 'command' commands
+    return
+  fi
+
+  # Completing arguments for a command (position 3+)
+  case $cmd in
+    -h|--help|help)
+      return
+      ;;
+    -v|--version)
+      return
+      ;;
+    init|status|list)
+      return
+      ;;
+    up)
+      case $CURRENT in
+        3) _dk_projects ;;
+        *)
+          _values 'flags' \
+            '--build[Rebuild images before starting]' \
+            '-b[Rebuild images before starting]' \
+            '--env[Use a specific environment]' \
+            '-e[Use a specific environment]' \
+            '--force[Skip confirmation prompts]' \
+            '-f[Skip confirmation prompts]' \
+            '--quiet[Suppress informational messages]' \
+            '-q[Suppress informational messages]'
+          ;;
+      esac
+      ;;
+    down)
+      case $CURRENT in
+        3) _dk_projects ;;
+        *)
+          _values 'flags' \
+            '--purge[Also remove volumes]' \
+            '-p[Also remove volumes]' \
+            '--force[Skip confirmation prompts]' \
+            '-f[Skip confirmation prompts]' \
+            '--env[Use a specific environment]' \
+            '-e[Use a specific environment]' \
+            '--quiet[Suppress informational messages]' \
+            '-q[Suppress informational messages]'
+          ;;
+      esac
+      ;;
+    stop|restart|build|ps|pull)
+      case $CURRENT in
+        3) _dk_projects ;;
+        *)
+          _values 'flags' \
+            '--env[Use a specific environment]' \
+            '-e[Use a specific environment]' \
+            '--force[Skip confirmation prompts]' \
+            '-f[Skip confirmation prompts]' \
+            '--quiet[Suppress informational messages]' \
+            '-q[Suppress informational messages]'
+          ;;
+      esac
+      ;;
+    logs)
+      case $CURRENT in
+        3) _dk_projects ;;
+        4) _dk_services "${words[3]}" ;;
+        *)
+          _values 'flags' \
+            '--tail[Show last N lines]' \
+            '-t[Show last N lines]' \
+            '--env[Use a specific environment]' \
+            '-e[Use a specific environment]' \
+            '--quiet[Suppress informational messages]' \
+            '-q[Suppress informational messages]'
+          ;;
+      esac
+      ;;
+    exec)
+      case $CURRENT in
+        3) _dk_projects ;;
+        4) _dk_services "${words[3]}" ;;
+        *) _normal ;;
+      esac
+      ;;
+    shell)
+      case $CURRENT in
+        3) _dk_projects ;;
+        4) _dk_services "${words[3]}" ;;
+      esac
+      ;;
+    clean)
+      case $CURRENT in
+        3) _dk_projects ;;
+        *)
+          _values 'flags' \
+            '--force[Skip confirmation prompts]' \
+            '-f[Skip confirmation prompts]' \
+            '--env[Use a specific environment]' \
+            '-e[Use a specific environment]' \
+            '--quiet[Suppress informational messages]' \
+            '-q[Suppress informational messages]'
+          ;;
+      esac
+      ;;
+    add)
+      case $CURRENT in
+        3) _files -/ ;;
+        4) _files -/ ;;
+      esac
+      ;;
+    remove)
+      case $CURRENT in
+        3) _dk_projects ;;
+      esac
+      ;;
+    env)
+      # dk env <project> <action> [arg1] [arg2]
+      #         words[3]  words[4]  [5]    [6]
+      local -a env_actions
+      env_actions=(
+        'list:List environments'
+        'info:Show environment details'
+        'add:Add a new environment'
+        'update:Update environment compose file'
+        'remove:Remove an environment'
+        'rm:Remove an environment (alias)'
+        'default:Set default environment'
+      )
+      case $CURRENT in
+        3) _dk_projects ;;
+        4) _describe 'env action' env_actions ;;
+        5)
+          case "${words[4]}" in
+            info|remove|rm|default)
+              _dk_envs "${words[3]}"
+              ;;
+            add)
+              _message 'environment name'
+              ;;
+            update)
+              _dk_envs "${words[3]}"
+              ;;
+          esac
+          ;;
+        6)
+          case "${words[4]}" in
+            add|update)
+              _files -g "*.{yml,yaml}"
+              ;;
+          esac
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_dk "$@"
